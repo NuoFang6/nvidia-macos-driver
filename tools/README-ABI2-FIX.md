@@ -24,8 +24,8 @@ kext，专门解决 macOS 26（Tahoe）上"能开机、桌面全黑"的问题：
 如果没有，先用官方包安装（`install.sh` 在 macOS 26 上需要把 `case $MAJ in 15)` 改成 `15|26)`）。
 
 ```bash
-unzip NVAccel-abi2-kexts.zip && cd dist
-sudo ./install-nvaccel26.sh            # 默认用 NVAccel-abi2-macos26/NVAccel.kext
+unzip NVAccel-abi2-kexts.zip        # 解压后文件就在当前目录
+sudo ./install-nvaccel26.sh         # 默认用 NVAccel-abi2-macos26/NVAccel.kext
 sudo shutdown -r now
 ```
 

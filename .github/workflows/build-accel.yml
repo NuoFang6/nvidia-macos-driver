@@ -131,12 +131,12 @@ jobs:
           cd dist
           find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS
           cat SHA256SUMS
+          zip -qry ../NVAccel-abi2-kexts.zip .
           cd ..
-          zip -qry NVAccel-abi2-kexts.zip dist
           shasum -a 256 NVAccel-abi2-kexts.zip
 
       - uses: actions/upload-artifact@v4
         with:
           name: NVAccel-abi2-kexts
-          path: NVAccel-abi2-kexts.zip
+          path: dist
           if-no-files-found: error
