@@ -123,11 +123,12 @@ jobs:
           ditto out/26/NVAccel.kext dist/NVAccel-abi2-macos26/NVAccel.kext
           ditto out/15/NVAccel.kext dist/NVAccel-abi2-macos15/NVAccel.kext
           cp tools/install-nvaccel26.sh dist/install-nvaccel26.sh
+          cp tools/remove-nullmoth.sh dist/remove-nullmoth.sh
           cp tools/README-ABI2-FIX.md dist/README-ABI2-FIX.md
           cp tools/verify_accel.py dist/verify_accel.py
           cp verify-report.txt dist/verify-report.txt
           cp /tmp/rmdefs.txt dist/rmdefs-used.txt
-          chmod +x dist/install-nvaccel26.sh
+          chmod +x dist/install-nvaccel26.sh dist/remove-nullmoth.sh
           cd dist
           find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS
           cat SHA256SUMS
