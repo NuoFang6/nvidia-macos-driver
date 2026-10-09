@@ -1,0 +1,40 @@
+# RM define set for a Darwin/x86_64 vendor build of open-gpu-kernel-modules 610.57.04.
+# One flag per line; consumed by .github/workflows/build-accel.yml only if the live
+# `make -n TARGET_OS=Darwin TARGET_ARCH=x86_64` capture fails, to assemble a fallback
+# _out/Darwin_x86_64/compile_cmds.sh whose head -1 feeds accel_build.sh's RMDEFS.
+# Transcribed from utils.mk (arch/platform block) and src/nvidia/Makefile (CFLAGS);
+# DEBUG=1/DEVELOP=1 are unset by default and add no defines.  -DNVRM and -D_LANGUAGE_C
+# are part of the real command line and are filtered by accel_build.sh itself.
+-DNV_X86_64
+-DNV_ARCH_BITS=64
+-D_LANGUAGE_C
+-D__NO_CTYPE
+-DNVRM
+-DLOCK_VAL_ENABLED=0
+-DPORT_ATOMIC_64_BIT_SUPPORTED=1
+-DPORT_IS_KERNEL_BUILD=1
+-DPORT_IS_CHECKED_BUILD=0
+-DPORT_MODULE_atomic=1
+-DPORT_MODULE_core=1
+-DPORT_MODULE_cpu=1
+-DPORT_MODULE_crypto=1
+-DPORT_MODULE_debug=1
+-DPORT_MODULE_memory=1
+-DPORT_MODULE_safe=1
+-DPORT_MODULE_string=1
+-DPORT_MODULE_sync=1
+-DPORT_MODULE_thread=1
+-DPORT_MODULE_time=1
+-DPORT_MODULE_util=1
+-DPORT_MODULE_example=0
+-DPORT_MODULE_mmio=0
+-DRS_STANDALONE=0
+-DRS_STANDALONE_TEST=0
+-DRS_COMPATABILITY_MODE=1
+-DRS_PROVIDES_API_STATE=0
+-DNV_CONTAINERS_NO_TEMPLATES
+-DINCLUDE_NVLINK_LIB
+-DINCLUDE_NVSWITCH_LIB
+-DNV_PRINTF_STRINGS_ALLOWED=1
+-DNV_ASSERT_FAILED_USES_STRINGS=1
+-DPORT_ASSERT_FAILED_USES_STRINGS=1

@@ -1,0 +1,129 @@
+name: build-nvaccel-abi2
+
+# Rebuild NVAccel for macOS 15 and 26 from this tree and verify the result against
+# the shipped reference.  Fix for nullmoth/nvidia-macos-driver issue #51 (black
+# desktop on macOS 26: kexts/26/NVAccel.kext still spoke VRAM ABI 1 while NVRMFB
+# speaks 2).  PR #60's build/accel_build_all.sh builds both accelerators; this
+# workflow adds the NVIDIA 610.57.04 headers, the Darwin RM define set and the
+# verification gates (symbol tables + the ABI-2 store in NVVidMemory::allocPhysical).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'kexts/NVRM/accel/**'
+      - 'kexts/NVRM/nvrm_vram_abi.h'
+      - 'kexts/NVRM/nvrm_gpuva_abi.h'
+      - 'kexts/NVRM/nvrm_surfshare_abi.h'
+      - 'build/accel_build.sh'
+      - 'build/accel_build_all.sh'
+      - 'tools/**'
+      - '.github/workflows/build-accel.yml'
+
+jobs:
+  build-accel:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain report
+        run: |
+          set -ux
+          sw_vers
+          git rev-parse HEAD
+          xcodebuild -version 2>/dev/null || echo "xcodebuild unavailable"
+          xcrun clang++ --version | head -2
+          echo "sdk: $(xcrun --sdk macosx --show-sdk-path)"
+          make --version | head -1
+          python3 --version
+
+      - name: Fetch NVIDIA open-gpu-kernel-modules 610.57.04 (headers)
+        run: |
+          set -eux
+          git clone --depth 1 --branch 610.57.04 --single-branch \
+            https://github.com/NVIDIA/open-gpu-kernel-modules.git "$HOME/ogkm610"
+          test -f "$HOME/ogkm610/src/nvidia-modeset/kapi/interface/nvkms-kapi.h"
+          test -f "$HOME/ogkm610/src/nvidia/nv-kernel.ld"
+          echo "ogkm610 headers OK"
+
+      - name: Generate the Darwin RM compile commands (define set for the accelerator)
+        run: |
+          set -eux
+          cd "$HOME/ogkm610/src/nvidia"
+          mkdir -p _out/Darwin_x86_64
+          make -n NV_VERBOSE=1 TARGET_OS=Darwin TARGET_ARCH=x86_64 all > /tmp/rm_dry.log 2>&1 || true
+          # recipes print with backslash-newline continuations: join them into logical lines
+          sed -e ':a' -e '/\\$/{N; s/\\\n//; ba}' /tmp/rm_dry.log > /tmp/rm_joined.log
+          grep -E ' -c [^ ]+\.(c|cpp) ' /tmp/rm_joined.log | sed 's/^[[:space:]]*@//' > /tmp/rm_cmds.txt || true
+          N=$(wc -l < /tmp/rm_cmds.txt | tr -d ' ')
+          echo "captured $N compile commands from make -n"
+          if [ "$N" -ge 50 ]; then
+            cp /tmp/rm_cmds.txt _out/Darwin_x86_64/compile_cmds.sh
+            echo "define source: live make capture"
+          else
+            echo "::warning::live make capture unusable ($N lines); falling back to tools/rmdefs-darwin-x86_64.txt"
+            { printf 'cc'; grep -v -e '^#' -e '^$' "$GITHUB_WORKSPACE/tools/rmdefs-darwin-x86_64.txt" | sed 's/^/ /' | tr '\n' ' '; \
+              printf ' -c arch/nvalloc/unix/src/osapi.c -o _out/Darwin_x86_64/osapi.o\n'; } > _out/Darwin_x86_64/compile_cmds.sh
+            echo "define source: static fallback"
+          fi
+          head -1 _out/Darwin_x86_64/compile_cmds.sh | cut -c1-400; echo
+          head -1 _out/Darwin_x86_64/compile_cmds.sh | tr ' ' '\n' | grep -E '^-D' | sort > /tmp/rmdefs.txt
+          echo "define count: $(wc -l < /tmp/rmdefs.txt | tr -d ' ')"
+          for d in -DNV_X86_64 -DNV_ARCH_BITS=64 -DPORT_IS_KERNEL_BUILD=1 -DLOCK_VAL_ENABLED=0 \
+                   -D__NO_CTYPE -DINCLUDE_NVLINK_LIB -DNV_ASSERT_FAILED_USES_STRINGS=1 -DNV_CONTAINERS_NO_TEMPLATES; do
+            grep -qx -- "$d" /tmp/rmdefs.txt || { echo "::error::RM define set lacks $d"; exit 1; }
+          done
+          if grep -qE '^-DNV_(LINUX|BSD|SUNOS)$' /tmp/rmdefs.txt; then
+            echo "::error::host platform define leaked into the Darwin define set"; exit 1
+          fi
+          echo "RM define set OK (Darwin x86_64)"
+
+      - name: Build NVAccel for macOS 15 and 26 (accel_build_all.sh, PR #60)
+        run: |
+          set -eux
+          export OGKM="$HOME/ogkm610"
+          build/accel_build_all.sh kexts/NVRM "$PWD/out"
+          ls -l out/15/NVAccel.kext/Contents/MacOS/NVAccel out/26/NVAccel.kext/Contents/MacOS/NVAccel
+
+      - name: Verify against the shipped reference (symbols + VRAM ABI store)
+        run: |
+          set -eux
+          python3 tools/verify_accel.py \
+            --15 out/15/NVAccel.kext/Contents/MacOS/NVAccel \
+            --26 out/26/NVAccel.kext/Contents/MacOS/NVAccel \
+            --reference tools/reference \
+            --report verify-report.txt
+
+      - name: Disassembly evidence (best effort)
+        if: always()
+        continue-on-error: true
+        run: |
+          xcrun llvm-objdump --macho -d out/26/NVAccel.kext/Contents/MacOS/NVAccel \
+            | grep -E '\[rbp - 0x(70|78)\]|nvAllocVram' | head -20
+
+      - name: Package the artifact
+        run: |
+          set -eux
+          mkdir -p dist
+          ditto out/26/NVAccel.kext dist/NVAccel-abi2-macos26/NVAccel.kext
+          ditto out/15/NVAccel.kext dist/NVAccel-abi2-macos15/NVAccel.kext
+          cp tools/install-nvaccel26.sh dist/install-nvaccel26.sh
+          cp tools/README-ABI2-FIX.md dist/README-ABI2-FIX.md
+          cp tools/verify_accel.py dist/verify_accel.py
+          cp verify-report.txt dist/verify-report.txt
+          cp /tmp/rmdefs.txt dist/rmdefs-used.txt
+          chmod +x dist/install-nvaccel26.sh
+          cd dist
+          find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS
+          cat SHA256SUMS
+          cd ..
+          zip -qry NVAccel-abi2-kexts.zip dist
+          shasum -a 256 NVAccel-abi2-kexts.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NVAccel-abi2-kexts
+          path: NVAccel-abi2-kexts.zip
+          if-no-files-found: error
