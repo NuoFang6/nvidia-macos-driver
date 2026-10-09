@@ -55,7 +55,20 @@ jobs:
           mkdir -p _out/Darwin_x86_64
           make -n NV_VERBOSE=1 TARGET_OS=Darwin TARGET_ARCH=x86_64 all > /tmp/rm_dry.log 2>&1 || true
           # recipes print with backslash-newline continuations: join them into logical lines
-          sed -e ':a' -e '/\\$/{N; s/\\\n//; ba}' /tmp/rm_dry.log > /tmp/rm_joined.log
+          python3 - <<'PY'
+          lines = open('/tmp/rm_dry.log', encoding='utf-8', errors='replace').read().splitlines(True)
+          out, buf = [], ''
+          for line in lines:
+              body = line.rstrip('\n')
+              if body.endswith('\\'):
+                  buf += body[:-1]
+              else:
+                  out.append(buf + line)
+                  buf = ''
+          if buf:
+              out.append(buf + '\n')
+          open('/tmp/rm_joined.log', 'w', encoding='utf-8').writelines(out)
+          PY
           grep -E ' -c [^ ]+\.(c|cpp) ' /tmp/rm_joined.log | sed 's/^[[:space:]]*@//' > /tmp/rm_cmds.txt || true
           N=$(wc -l < /tmp/rm_cmds.txt | tr -d ' ')
           echo "captured $N compile commands from make -n"
