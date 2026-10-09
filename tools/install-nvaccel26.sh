@@ -63,7 +63,8 @@ ditto "$PAYLOAD/Contents/Info.plist" "$EXT/Contents/Info.plist" || die "copy the
 ditto "$PAYLOAD/Contents/MacOS/NVAccel" "$CACHE/Contents/MacOS/NVAccel" || die "copy the cached executable"
 ditto "$PAYLOAD/Contents/Info.plist" "$CACHE/Contents/Info.plist" || die "copy the cached Info.plist"
 chown -R root:wheel "$EXT" "$CACHE" || die "fix ownership"
-chmod -R go-w "$EXT" "$CACHE" || die "fix permissions"
+chmod -R 755 "$EXT" || die "fix executable permissions"          # same as install.sh
+chmod -R go-w "$CACHE" || die "fix cache permissions"
 (cd "$CACHE/.." && find NVAccel.kext -type f -exec shasum -a 256 '{}' \;) > "$CACHE/../SHA256SUMS" || die "refresh the cache manifest"
 (cd "$EXT/.." && shasum -a 256 NVAccel.kext/Contents/MacOS/NVAccel) > "$EXT/../NVAccel-SHA256SUMS" || true
 echo "   installed"
